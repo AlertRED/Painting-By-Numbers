@@ -4,7 +4,6 @@ import math
 from timeit import default_timer as timer
 import cv2
 import numpy as np
-from mpi4py import MPI
 from skimage import io
 from enum import Enum
 
@@ -66,9 +65,9 @@ def get_new_start(polygon, right_border, down_border, is_counted):
     while already_counted:
         if is_counted[x_new][y_new] == PolygonStatus.not_counted.value:
             already_counted = False
-        elif y < right_border - 1:
+        elif y_new < right_border - 1:
             y_new += 1
-        elif x < down_border - 1:
+        elif x_new < down_border - 1:
             x_new += 1
             y_new = 0
         else:
@@ -78,10 +77,11 @@ def get_new_start(polygon, right_border, down_border, is_counted):
 
 def polygon_recount(image_matrix):
     curr_x = curr_y = 0
-    min_limit = 5
     current_polygon = []
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
+    min_limit = int(x_len * y_len / 100 * 0.005)
+    print('min lim - ', min_limit)
     is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
     while not is_all_recounted(is_counted):
         current_color = image_matrix[curr_x][curr_y]
@@ -166,7 +166,7 @@ def polygon_merge(image_matrix, polygon_status):
 
 def contouring(image_matrix):
     final_img = [[[0] * 4 for _ in range(dimensions[0])] for _ in range(dimensions[1])]
-    black = np.array([0, 0, 0, 255]).astype(np.uint8)
+    black = np.array([41, 41, 41, 255]).astype(np.uint8)
     white = np.array([255, 255, 255, 255]).astype(np.uint8)
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
@@ -193,10 +193,59 @@ def contouring(image_matrix):
     return final_img
 
 
+def clustering(rgba, cluster_centers):
+    x_len = len(rgba)
+    y_len = len(rgba[0])
+    cluster_dic = [[] for _ in range(0, N)]
+    cluster_dic_prev = []
+    itr = 0
+    new_image = [[[0] * 4 for _ in range(y_len)] for _ in range(x_len)]
+    while True:
+        for x in range(x_len):
+            for y in range(y_len):
+                pixel = rgba[x, y].astype(np.int32)
+                min_distance = sys.maxsize
+                cluster_id = 0
+                for i in range(0, N):
+                    current_center = cluster_centers[i].astype(np.int32)
+                    distance = pixel_difference(current_center, pixel)
+                    if distance < min_distance:
+                        min_distance = distance
+                        cluster_id = i
+                cluster_dic[cluster_id].append(pixel)
+                new_image[x][y] = cluster_centers[cluster_id]
+        for i in range(0, N):
+            current_cluster = cluster_dic[i]
+            if len(current_cluster) > 0:
+                summ_a = summ_r = summ_g = summ_b = 0
+                for pixel in current_cluster:
+                    summ_r += pixel[0]
+                    summ_g += pixel[1]
+                    summ_b += pixel[2]
+                    summ_a += pixel[3]
+                cluster_centers[i][0] = summ_r // len(current_cluster)
+                cluster_centers[i][1] = summ_g // len(current_cluster)
+                cluster_centers[i][2] = summ_b // len(current_cluster)
+                cluster_centers[i][3] = summ_a // len(current_cluster)
+        equality = True
+        if len(cluster_dic_prev) > 0:
+            for i in range(0, N):
+                if cluster_dic_prev[i] != cluster_dic[i]:
+                    equality = False
+                    break
+        else:
+            equality = False
+        cluster_dic_prev = copy.deepcopy(cluster_dic)
+        print(itr)
+        itr += 1
+        if equality or itr > 3:
+            break
+    return new_image
+
+
 original_image = io.imread('img_2.jpg')
 
 max_dimension = 500
-# original_dimensions = [x,y]
 original_dimensions = [original_image.shape[0], original_image.shape[1]]
 if max(original_dimensions[0], original_dimensions[1]) == original_image.shape[0]:
     height = max_dimension
@@ -212,9 +261,10 @@ dimensions = (width, height)
 resized = cv2.resize(original_image, dimensions, interpolation=cv2.INTER_AREA)
 rgba_image = cv2.cvtColor(resized, cv2.COLOR_RGB2RGBA)
 
-# количество кластеров
-N = math.ceil(max(width, height) / 100 * 8)
-# первичная инициализация центров кластеров рандомными значениями
+# amount of clusters
+N = math.ceil(max(width, height) / 100 * 15)
+print('clusters - ', N)
+# random initialization of clusters' centroids
 cluster_centers = []
 for i in range(0, N):
     x_rand = np.random.randint(low=0, high=dimensions[1])
@@ -222,74 +272,24 @@ for i in range(0, N):
     cluster_centers.append(rgba_image[x_rand, y_rand])
 cluster_centers = np.asarray(cluster_centers)
 
-cluster_dic = [[] for _ in range(0, N)]
-cluster_dic_prev = []
-itr = 0
 new_img = [[[0] * 4 for _ in range(dimensions[0])] for _ in range(dimensions[1])]
 
-comm = MPI.COMM_WORLD
-commsize = MPI.COMM_WORLD.Get_size()
-rank = comm.Get_rank()
-if commsize > 1:
-    lb, ub = get_borders(height, commsize, rank)
-else:
-    lb = 0
-    ub = height
 start = timer()
-# кластеризация k-means
-while (True):
-    for x in range(lb, ub):
-        for y in range(width):
-            pixel = rgba_image[x, y].astype(np.int32)
-            min_distance = sys.maxsize
-            cluster_id = 0
-            for i in range(0, N):
-                current_center = cluster_centers[i].astype(np.int32)
-                distance = pixel_difference(current_center, pixel)
-                if distance < min_distance:
-                    min_distance = distance
-                    cluster_id = i
-            cluster_dic[cluster_id].append(pixel)
-            new_img[x][y] = cluster_centers[cluster_id]
-    for i in range(0, N):
-        current_cluster = cluster_dic[i]
-        if len(current_cluster) > 0:
-            summ_a = summ_r = summ_g = summ_b = 0
-            for pixel in current_cluster:
-                summ_r += pixel[0]
-                summ_g += pixel[1]
-                summ_b += pixel[2]
-                summ_a += pixel[3]
-            cluster_centers[i][0] = summ_r // len(current_cluster)
-            cluster_centers[i][1] = summ_g // len(current_cluster)
-            cluster_centers[i][2] = summ_b // len(current_cluster)
-            cluster_centers[i][3] = summ_a // len(current_cluster)
-    equality = True
-    if len(cluster_dic_prev) > 0:
-        for i in range(0, N):
-            if cluster_dic_prev[i] != cluster_dic[i]:
-                equality = False
-                break
-    else:
-        equality = False
-    cluster_dic_prev = copy.deepcopy(cluster_dic)
-    print(itr)
-    itr += 1
-    if equality == True or itr > 3:
-        break
+# clustering k-means
+new_img = clustering(rgba_image, cluster_centers)
 end = timer()
 print('Time - ', end - start)
 
 polygon_status = polygon_recount(new_img)
 image_recounted = polygon_merge(new_img, polygon_status)
 
-output = cv2.cvtColor(np.asarray(image_recounted), cv2.COLOR_RGBA2BGR)
+clustered_image = cv2.cvtColor(np.asarray(image_recounted), cv2.COLOR_RGBA2BGR)
 
-# контурирование
+# contouring for black-white image
 contours = contouring(image_recounted)
-out = cv2.cvtColor(np.asarray(contours), cv2.COLOR_RGBA2BGR)
+contoured_image = cv2.cvtColor(np.asarray(contours), cv2.COLOR_RGBA2BGR)
 
-cv2.imshow("cont", out)
-cv2.imshow("dv", output)
+cv2.imshow("cont", contoured_image)
+cv2.imshow("dv", clustered_image)
 
 cv2.waitKey(0)

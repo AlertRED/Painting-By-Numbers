@@ -8,7 +8,7 @@ from skimage import io
 from enum import Enum
 
 
-class PixelStatus(Enum):
+class PolygonStatus(Enum):
     recounted = 0
     too_small = 1
     not_counted = 2
@@ -41,44 +41,79 @@ def is_equal(list_1, list_2):
     return flag
 
 
+def is_all_recounted(matrix):
+    flag = True
+    for line in matrix:
+        if 2 in line:
+            flag = False
+            break
+    return flag
+
+
+def get_new_start(polygon, right_border, down_border, is_counted):
+    x_new = polygon[0][0]
+    y_new = -1
+    for pixel in polygon:
+        if pixel[0] == x_new:
+            y_new = pixel[1]
+    if y_new == right_border - 1:
+        if x_new < down_border - 1:
+            x_new += 1
+            y_new = -1
+    y_new += 1
+    already_counted = True
+    while already_counted:
+        if is_counted[x_new][y_new] == PolygonStatus.not_counted.value:
+            already_counted = False
+        elif y < right_border - 1:
+            y_new += 1
+        elif x < down_border - 1:
+            x_new += 1
+            y_new = 0
+        else:
+            break
+    return x_new, y_new
+
+
 def polygon_recount(image_matrix):
     curr_x = curr_y = 0
-    min_limit = 50
+    min_limit = 5
     current_polygon = []
-    current_color = image_matrix[curr_x][curr_y]
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
-    is_counted = [[PixelStatus.not_counted.value] * y_len for _ in range(x_len)]
-    while True:
-        curr_line = [(curr_x, curr_y)]
-        current_polygon.append((curr_x, curr_y))
-        #pixel_amount += 1
-        #is_counted[curr_x][curr_y] = False
-        while is_equal(current_color, image_matrix[curr_x][curr_y + 1]):
-            curr_y += 1
-            curr_line.append((curr_x, curr_y))
+    is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
+    while not is_all_recounted(is_counted):
+        current_color = image_matrix[curr_x][curr_y]
+        while True:
+            curr_line = [(curr_x, curr_y)]
             current_polygon.append((curr_x, curr_y))
-            #is_counted[curr_x][curr_y] = False
-            #pixel_amount += 1
-        if is_equal(current_color, image_matrix[curr_line[0][0] + 1][curr_line[0][1]]):
-            curr_x += 1
-            curr_y = curr_line[0][1]
-            while curr_y - 1 > 0 and is_equal(current_color, image_matrix[curr_x][curr_y - 1]):
-                curr_y -= 1
-        else:
-            for x, y in curr_line:
-                x += 1
-                if is_equal(current_color, image_matrix[x][y]):
-                    curr_x = x
-                    curr_y = y
+            while curr_y + 1 < y_len - 1 and is_equal(current_color, image_matrix[curr_x][curr_y + 1]):
+                curr_y += 1
+                curr_line.append((curr_x, curr_y))
+                current_polygon.append((curr_x, curr_y))
+            if curr_line[0][0] + 1 < x_len - 1 and is_equal(current_color, image_matrix[curr_line[0][0] + 1][curr_line[0][1]]):
+                curr_x += 1
+                curr_y = curr_line[0][1]
+                while curr_y - 1 > 0 and is_equal(current_color, image_matrix[curr_x][curr_y - 1]):
+                    curr_y -= 1
             else:
-                break
-    if len(current_polygon) >= min_limit:
-        for x,y in current_polygon:
-            is_counted[x][y] = PixelStatus.recounted.value
-    else:
-        for x,y in current_polygon:
-            is_counted[x][y] = PixelStatus.too_small.value
+                for x, y in curr_line:
+                    x += 1
+                    if x < x_len and is_equal(current_color, image_matrix[x][y]):
+                        curr_x = x
+                        curr_y = y
+                        break
+                else:
+                    break
+        if len(current_polygon) >= min_limit:
+            for x, y in current_polygon:
+                is_counted[x][y] = PolygonStatus.recounted.value
+        else:
+            for x, y in current_polygon:
+                is_counted[x][y] = PolygonStatus.too_small.value
+        curr_x, curr_y = get_new_start(current_polygon, y_len, x_len, is_counted)
+        current_polygon = []
+    print(is_counted)
 
 
 
@@ -171,7 +206,6 @@ imgray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
 final_img = [[[0] * 4 for _ in range(dimensions[0])] for _ in range(dimensions[1])]
 black = np.array([0, 0, 0, 255]).astype(np.uint8)
 white = np.array([255, 255, 255, 255]).astype(np.uint8)
-
 polygon_recount(new_img)
 # контурирование
 # for x in range(height):

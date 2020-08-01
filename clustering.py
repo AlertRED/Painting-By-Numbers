@@ -3,6 +3,7 @@ import sys
 import math
 from timeit import default_timer as timer
 import cv2
+import svgwrite
 import numpy as np
 from skimage import io
 from enum import Enum
@@ -12,24 +13,6 @@ class PolygonStatus(Enum):
     recounted = 0
     too_small = 1
     not_counted = 2
-
-
-def get_borders(N, commsize, rank):
-    floor = N // commsize
-    if N % commsize != 0:
-        floor += 1
-    rest = commsize * floor - N
-    chunk = floor
-    larger_amount = commsize - rest
-    extra_rank = rank - larger_amount
-    if rank >= larger_amount:
-        chunk = floor - 1
-    lb = rank * chunk
-    ub = lb + chunk
-    if rank >= larger_amount:
-        lb = floor * larger_amount + (chunk * extra_rank)
-        ub = ub + larger_amount
-    return lb, ub
 
 
 def is_equal(list_1, list_2):
@@ -50,29 +33,22 @@ def is_all_recounted(matrix):
     return flag
 
 
-def get_new_start(polygon, right_border, down_border, is_counted):
-    x_new = polygon[0][0]
-    y_new = -1
-    for pixel in polygon:
-        if pixel[0] == x_new:
-            y_new = pixel[1]
-    if y_new == right_border - 1:
-        if x_new < down_border - 1:
-            x_new += 1
-            y_new = -1
-    y_new += 1
+def get_new_start(matrix, is_counted):
+    x_len = len(matrix)
+    y_len = len(matrix[0])
     already_counted = True
+    x = y = 0
     while already_counted:
-        if is_counted[x_new][y_new] == PolygonStatus.not_counted.value:
+        if is_counted[x][y] == PolygonStatus.not_counted.value:
             already_counted = False
-        elif y_new < right_border - 1:
-            y_new += 1
-        elif x_new < down_border - 1:
-            x_new += 1
-            y_new = 0
+        elif y < y_len - 1:
+            y += 1
+        elif x < x_len - 1:
+            x += 1
+            y = 0
         else:
             break
-    return x_new, y_new
+    return x, y
 
 
 def polygon_recount(image_matrix):
@@ -83,6 +59,7 @@ def polygon_recount(image_matrix):
     min_limit = int(x_len * y_len / 100 * 0.005)
     print('min lim - ', min_limit)
     is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
+    prev_line = []
     while not is_all_recounted(is_counted):
         current_color = image_matrix[curr_x][curr_y]
         while True:
@@ -92,6 +69,50 @@ def polygon_recount(image_matrix):
                 curr_y += 1
                 curr_line.append((curr_x, curr_y))
                 current_polygon.append((curr_x, curr_y))
+                # appendix - the polygon's part, that suddenly grows somewhere to the upper direction,
+                # being separated from the main polygon part with a hole on the left/on the right
+                if curr_x > 0 and (curr_x - 1, curr_y) not in current_polygon and is_equal(current_color,
+                                                                                      image_matrix[curr_x - 1][curr_y]):
+                    appendix_x = curr_x - 1
+                    appendix_y = curr_y
+                    while True:
+                        appendix_line = [(appendix_x, appendix_y)]
+                        current_polygon.append((appendix_x, appendix_y))
+                        while appendix_y + 1 < y_len - 1 and is_equal(current_color,
+                                                                      image_matrix[appendix_x][appendix_y + 1]):
+                            appendix_y += 1
+                            appendix_line.append((appendix_x, appendix_y))
+                            current_polygon.append((appendix_x, appendix_y))
+                        if appendix_line[0][0] - 1 >= 0 and is_equal(current_color,
+                                                                        image_matrix[appendix_line[0][0] - 1][appendix_line[0][1]]):
+                            appendix_x -= 1
+                            appendix_y = appendix_line[0][1]
+                            while appendix_y - 1 >= 0 and is_equal(current_color, image_matrix[appendix_x][appendix_y - 1]):
+                                appendix_y -= 1
+                        else:
+                            for x_app, y_app in appendix_line:
+                                x_app -= 1
+                                if x_app >= 0 and is_equal(current_color, image_matrix[x_app][y_app]):
+                                    appendix_x = x_app
+                                    appendix_y = y_app
+                                    break
+                            else:
+                                break
+            if prev_line:
+                while True:
+                    if curr_x > 0 and curr_y < y_len - 1 and (curr_x - 1, curr_y + 1) in prev_line:
+                        curr_y += 1
+                        if is_equal(current_color, image_matrix[curr_x][curr_y]):
+                            curr_line.append((curr_x, curr_y))
+                            current_polygon.append((curr_x, curr_y))
+                            while curr_y + 1 < y_len - 1 and is_equal(current_color, image_matrix[curr_x][curr_y + 1]):
+                                curr_y += 1
+                                curr_line.append((curr_x, curr_y))
+                                current_polygon.append((curr_x, curr_y))
+                    else:
+                        break
+
+            prev_line = curr_line
             if curr_line[0][0] + 1 < x_len - 1 and is_equal(current_color,
                                                             image_matrix[curr_line[0][0] + 1][curr_line[0][1]]):
                 curr_x += 1
@@ -113,7 +134,8 @@ def polygon_recount(image_matrix):
         else:
             for x, y in current_polygon:
                 is_counted[x][y] = PolygonStatus.too_small.value
-        curr_x, curr_y = get_new_start(current_polygon, y_len, x_len, is_counted)
+        if not is_all_recounted(is_counted):
+            curr_x, curr_y = get_new_start(image_matrix, is_counted)
         current_polygon = []
     return is_counted
 
@@ -166,7 +188,7 @@ def polygon_merge(image_matrix, polygon_status):
 
 def contouring(image_matrix):
     final_img = [[[0] * 4 for _ in range(dimensions[0])] for _ in range(dimensions[1])]
-    black = np.array([41, 41, 41, 255]).astype(np.uint8)
+    black = np.array([80, 80, 80, 255]).astype(np.uint8)
     white = np.array([255, 255, 255, 255]).astype(np.uint8)
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
@@ -243,9 +265,31 @@ def clustering(rgba, cluster_centers):
     return new_image
 
 
-original_image = io.imread('img_2.jpg')
+def coloring(image, image_contours):
+    x_len = len(image)
+    y_len = len(image[0])
+    white = np.array([255, 255, 255, 255]).astype(np.uint8)
+    colored_image = [[[0] * 4 for _ in range(y_len)] for _ in range(x_len)]
+    for x in range(x_len):
+        for y in range(y_len):
+            if is_equal(image_contours[x][y], white):
+                colored_image[x][y] = image[x][y]
+            else:
+                colored_image[x][y] = image_contours[x][y]
+    return colored_image
 
-max_dimension = 500
+
+def vectorization(image_contours):
+    x_len = len(image_contours)
+    y_len = len(image_contours[0])
+    image = svgwrite.Drawing('contours.svg', size=(x_len, y_len))
+
+    image.save()
+
+
+original_image = io.imread('img_1.jpg')
+
+max_dimension = 200
 original_dimensions = [original_image.shape[0], original_image.shape[1]]
 if max(original_dimensions[0], original_dimensions[1]) == original_image.shape[0]:
     height = max_dimension
@@ -255,7 +299,7 @@ else:
     width = max_dimension
     scale_percent = int(max_dimension / (original_image.shape[1] / 100))
     height = int(original_image.shape[0] * scale_percent / 100)
-
+# width = height = 200
 dimensions = (width, height)
 
 resized = cv2.resize(original_image, dimensions, interpolation=cv2.INTER_AREA)
@@ -263,6 +307,7 @@ rgba_image = cv2.cvtColor(resized, cv2.COLOR_RGB2RGBA)
 
 # amount of clusters
 N = math.ceil(max(width, height) / 100 * 15)
+# N = 20
 print('clusters - ', N)
 # random initialization of clusters' centroids
 cluster_centers = []
@@ -287,9 +332,16 @@ clustered_image = cv2.cvtColor(np.asarray(image_recounted), cv2.COLOR_RGBA2BGR)
 
 # contouring for black-white image
 contours = contouring(image_recounted)
-contoured_image = cv2.cvtColor(np.asarray(contours), cv2.COLOR_RGBA2BGR)
+result = cv2.cvtColor(np.asarray(coloring(image_recounted, contours)), cv2.COLOR_RGBA2BGR)
 
-cv2.imshow("cont", contoured_image)
-cv2.imshow("dv", clustered_image)
+contoured_image = cv2.cvtColor(np.asarray(contours), cv2.COLOR_RGBA2BGR)
+vectorization(contours)
+
+cv2.imshow("result", result)
+cv2.imshow("contours", contoured_image)
+cv2.imshow("clusters", clustered_image)
+# out = contouring(new_img)
+# cv2.imshow("clust", cv2.cvtColor(np.asarray(new_img), cv2.COLOR_RGBA2BGR))
+# cv2.imshow("clusters", cv2.cvtColor(np.asarray(out), cv2.COLOR_RGBA2BGR))
 
 cv2.waitKey(0)

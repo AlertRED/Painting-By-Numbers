@@ -33,9 +33,9 @@ def is_all_recounted(matrix):
     return flag
 
 
-def get_new_start(matrix, is_counted):
-    x_len = len(matrix)
-    y_len = len(matrix[0])
+def get_new_start(is_counted):
+    x_len = len(is_counted)
+    y_len = len(is_counted[0])
     already_counted = True
     x = y = 0
     while already_counted:
@@ -51,83 +51,90 @@ def get_new_start(matrix, is_counted):
     return x, y
 
 
-def polygon_recount(image_matrix):
-    curr_x = curr_y = 0
-    current_polygon = []
-    x_len = len(image_matrix)
-    y_len = len(image_matrix[0])
-    min_limit = int(x_len * y_len / 100 * 0.005)
-    print('min lim - ', min_limit)
-    is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
-    prev_line = []
-    while not is_all_recounted(is_counted):
-        current_color = image_matrix[curr_x][curr_y]
-        while True:
-            curr_line = [(curr_x, curr_y)]
-            current_polygon.append((curr_x, curr_y))
-            while curr_y + 1 < y_len - 1 and is_equal(current_color, image_matrix[curr_x][curr_y + 1]):
-                curr_y += 1
-                curr_line.append((curr_x, curr_y))
-                current_polygon.append((curr_x, curr_y))
-                # appendix - the polygon's part, that suddenly grows somewhere to the upper direction,
-                # being separated from the main polygon part with a hole on the left/on the right
-                if curr_x > 0 and (curr_x - 1, curr_y) not in current_polygon and is_equal(current_color,
-                                                                                      image_matrix[curr_x - 1][curr_y]):
-                    appendix_x = curr_x - 1
-                    appendix_y = curr_y
-                    while True:
-                        appendix_line = [(appendix_x, appendix_y)]
-                        current_polygon.append((appendix_x, appendix_y))
-                        while appendix_y + 1 < y_len - 1 and is_equal(current_color,
-                                                                      image_matrix[appendix_x][appendix_y + 1]):
-                            appendix_y += 1
-                            appendix_line.append((appendix_x, appendix_y))
-                            current_polygon.append((appendix_x, appendix_y))
-                        if appendix_line[0][0] - 1 >= 0 and is_equal(current_color,
-                                                                        image_matrix[appendix_line[0][0] - 1][appendix_line[0][1]]):
-                            appendix_x -= 1
-                            appendix_y = appendix_line[0][1]
-                            while appendix_y - 1 >= 0 and is_equal(current_color, image_matrix[appendix_x][appendix_y - 1]):
-                                appendix_y -= 1
-                        else:
-                            for x_app, y_app in appendix_line:
-                                x_app -= 1
-                                if x_app >= 0 and is_equal(current_color, image_matrix[x_app][y_app]):
-                                    appendix_x = x_app
-                                    appendix_y = y_app
-                                    break
-                            else:
-                                break
-            if prev_line:
-                while True:
-                    if curr_x > 0 and curr_y < y_len - 1 and (curr_x - 1, curr_y + 1) in prev_line:
-                        curr_y += 1
-                        if is_equal(current_color, image_matrix[curr_x][curr_y]):
-                            curr_line.append((curr_x, curr_y))
-                            current_polygon.append((curr_x, curr_y))
-                            while curr_y + 1 < y_len - 1 and is_equal(current_color, image_matrix[curr_x][curr_y + 1]):
-                                curr_y += 1
-                                curr_line.append((curr_x, curr_y))
-                                current_polygon.append((curr_x, curr_y))
-                    else:
-                        break
-
-            prev_line = curr_line
-            if curr_line[0][0] + 1 < x_len - 1 and is_equal(current_color,
-                                                            image_matrix[curr_line[0][0] + 1][curr_line[0][1]]):
+def get_polygon(image, curr_x, curr_y, direction, status_matrix):
+    x_len = len(image)
+    y_len = len(image[0])
+    sub_polygon = []
+    color = image[curr_x][curr_y]
+    previous_line = []
+    while True:
+        current_line = [(curr_x, curr_y)]
+        sub_polygon.append((curr_x, curr_y))
+        while curr_y + 1 < y_len - 1 and is_equal(color, image[curr_x][curr_y + 1]):
+            curr_y += 1
+            current_line.append((curr_x, curr_y))
+            sub_polygon.append((curr_x, curr_y))
+            status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
+            if curr_x > 0 and \
+                    (curr_x - 1, curr_y) not in sub_polygon and \
+                    status_matrix[curr_x - 1][curr_y] == PolygonStatus.not_counted.value and \
+                    is_equal(color, image[curr_x - 1][curr_y]):
+                new_sub, status_matrix = get_polygon(image, curr_x - 1, curr_y, -1, status_matrix)
+                for elem in new_sub:
+                    sub_polygon.append(elem)
+                #     if elem not in sub_polygon:
+                #         sub_polygon.append(elem)
+        if previous_line:
+            while True:
+                if curr_x > 0 and curr_y < y_len - 1 and (curr_x - 1, curr_y + 1) in previous_line:
+                    curr_y += 1
+                    if is_equal(color, image[curr_x][curr_y]) and \
+                            status_matrix[curr_x][curr_y] == PolygonStatus.not_counted.value:
+                        current_line.append((curr_x, curr_y))
+                        sub_polygon.append((curr_x, curr_y))
+                        status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
+                        while curr_y + 1 < y_len - 1 and is_equal(color, image[curr_x][curr_y + 1]) and \
+                                status_matrix[curr_x][curr_y + 1] == PolygonStatus.not_counted.value:
+                            curr_y += 1
+                            current_line.append((curr_x, curr_y))
+                            sub_polygon.append((curr_x, curr_y))
+                            status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
+                else:
+                    break
+        previous_line = current_line
+        if direction == 1:
+            if current_line[0][0] + 1 < x_len - 1 and is_equal(color,
+                                                               image[current_line[0][0] + 1][current_line[0][1]]):
                 curr_x += 1
-                curr_y = curr_line[0][1]
-                while curr_y - 1 > 0 and is_equal(current_color, image_matrix[curr_x][curr_y - 1]):
+                curr_y = current_line[0][1]
+                while curr_y - 1 > 0 and is_equal(color, image[curr_x][curr_y - 1]):
                     curr_y -= 1
             else:
-                for x, y in curr_line:
+                for x, y in current_line:
                     x += 1
-                    if x < x_len and is_equal(current_color, image_matrix[x][y]):
+                    if x < x_len and is_equal(color, image[x][y]):
                         curr_x = x
                         curr_y = y
                         break
                 else:
                     break
+        else:
+            if current_line[0][0] - 1 >= 0 and is_equal(color, image[current_line[0][0] - 1][current_line[0][1]]):
+                curr_x -= 1
+                curr_y = current_line[0][1]
+                while curr_y - 1 > 0 and is_equal(color, image[curr_x][curr_y - 1]):
+                    curr_y -= 1
+            else:
+                for x, y in current_line:
+                    x -= 1
+                    if x >= 0 and is_equal(color, image[x][y]):
+                        curr_x = x
+                        curr_y = y
+                        break
+                else:
+                    break
+    return sub_polygon, status_matrix
+
+
+def polygon_recount(image_matrix):
+    curr_x = curr_y = 0
+    x_len = len(image_matrix)
+    y_len = len(image_matrix[0])
+    min_limit = int(x_len * y_len / 100 * 0.005)
+    print('min lim - ', min_limit)
+    is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
+    while not is_all_recounted(is_counted):
+        current_polygon, status = get_polygon(image_matrix, curr_x, curr_y, 1, is_counted)
         if len(current_polygon) >= min_limit:
             for x, y in current_polygon:
                 is_counted[x][y] = PolygonStatus.recounted.value
@@ -135,8 +142,7 @@ def polygon_recount(image_matrix):
             for x, y in current_polygon:
                 is_counted[x][y] = PolygonStatus.too_small.value
         if not is_all_recounted(is_counted):
-            curr_x, curr_y = get_new_start(image_matrix, is_counted)
-        current_polygon = []
+            curr_x, curr_y = get_new_start(is_counted)
     return is_counted
 
 

@@ -51,79 +51,28 @@ def get_new_start(is_counted):
     return x, y
 
 
-def get_polygon(image, curr_x, curr_y, direction, status_matrix):
+def get_polygon(image, curr_x, curr_y, status_matrix, polygon):
+    polygon.append((curr_x, curr_y))
+    color = image[curr_x][curr_y]
+    status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
     x_len = len(image)
     y_len = len(image[0])
-    sub_polygon = []
-    color = image[curr_x][curr_y]
-    previous_line = []
-    while True:
-        current_line = [(curr_x, curr_y)]
-        sub_polygon.append((curr_x, curr_y))
-        while curr_y + 1 < y_len - 1 and is_equal(color, image[curr_x][curr_y + 1]):
-            curr_y += 1
-            current_line.append((curr_x, curr_y))
-            sub_polygon.append((curr_x, curr_y))
-            status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
-            if curr_x > 0 and \
-                    (curr_x - 1, curr_y) not in sub_polygon and \
-                    status_matrix[curr_x - 1][curr_y] == PolygonStatus.not_counted.value and \
-                    is_equal(color, image[curr_x - 1][curr_y]):
-                new_sub, status_matrix = get_polygon(image, curr_x - 1, curr_y, -1, status_matrix)
-                for elem in new_sub:
-                    sub_polygon.append(elem)
-                #     if elem not in sub_polygon:
-                #         sub_polygon.append(elem)
-        if previous_line:
-            while True:
-                if curr_x > 0 and curr_y < y_len - 1 and (curr_x - 1, curr_y + 1) in previous_line:
-                    curr_y += 1
-                    if is_equal(color, image[curr_x][curr_y]) and \
-                            status_matrix[curr_x][curr_y] == PolygonStatus.not_counted.value:
-                        current_line.append((curr_x, curr_y))
-                        sub_polygon.append((curr_x, curr_y))
-                        status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
-                        while curr_y + 1 < y_len - 1 and is_equal(color, image[curr_x][curr_y + 1]) and \
-                                status_matrix[curr_x][curr_y + 1] == PolygonStatus.not_counted.value:
-                            curr_y += 1
-                            current_line.append((curr_x, curr_y))
-                            sub_polygon.append((curr_x, curr_y))
-                            status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
-                else:
-                    break
-        previous_line = current_line
-        if direction == 1:
-            if current_line[0][0] + 1 < x_len - 1 and is_equal(color,
-                                                               image[current_line[0][0] + 1][current_line[0][1]]):
-                curr_x += 1
-                curr_y = current_line[0][1]
-                while curr_y - 1 > 0 and is_equal(color, image[curr_x][curr_y - 1]):
-                    curr_y -= 1
-            else:
-                for x, y in current_line:
-                    x += 1
-                    if x < x_len and is_equal(color, image[x][y]):
-                        curr_x = x
-                        curr_y = y
-                        break
-                else:
-                    break
-        else:
-            if current_line[0][0] - 1 >= 0 and is_equal(color, image[current_line[0][0] - 1][current_line[0][1]]):
-                curr_x -= 1
-                curr_y = current_line[0][1]
-                while curr_y - 1 > 0 and is_equal(color, image[curr_x][curr_y - 1]):
-                    curr_y -= 1
-            else:
-                for x, y in current_line:
-                    x -= 1
-                    if x >= 0 and is_equal(color, image[x][y]):
-                        curr_x = x
-                        curr_y = y
-                        break
-                else:
-                    break
-    return sub_polygon, status_matrix
+    if curr_y - 1 >= 0 and \
+            is_equal(color, image[curr_x][curr_y - 1]) and \
+            status_matrix[curr_x][curr_y - 1] == PolygonStatus.not_counted.value:
+        get_polygon(image, curr_x, curr_y - 1, status_matrix, polygon)
+    if curr_y + 1 < y_len and \
+            is_equal(color, image[curr_x][curr_y + 1]) and \
+            status_matrix[curr_x][curr_y + 1] == PolygonStatus.not_counted.value:
+        get_polygon(image, curr_x, curr_y + 1, status_matrix, polygon)
+    if curr_x - 1 >= 0 and \
+            is_equal(color, image[curr_x - 1][curr_y]) and \
+            status_matrix[curr_x - 1][curr_y] == PolygonStatus.not_counted.value:
+        get_polygon(image, curr_x - 1, curr_y, status_matrix, polygon)
+    if curr_x + 1 < x_len and \
+            is_equal(color, image[curr_x + 1][curr_y]) and \
+            status_matrix[curr_x + 1][curr_y] == PolygonStatus.not_counted.value:
+        get_polygon(image, curr_x + 1, curr_y, status_matrix, polygon)
 
 
 def polygon_recount(image_matrix):
@@ -134,8 +83,9 @@ def polygon_recount(image_matrix):
     print('min lim - ', min_limit)
     is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
     while not is_all_recounted(is_counted):
-        current_polygon, status = get_polygon(image_matrix, curr_x, curr_y, 1, is_counted)
-        if len(current_polygon) >= min_limit:
+        current_polygon = []
+        get_polygon(image_matrix, curr_x, curr_y, is_counted, current_polygon)
+        if len(current_polygon) > min_limit:
             for x, y in current_polygon:
                 is_counted[x][y] = PolygonStatus.recounted.value
         else:
@@ -225,7 +175,6 @@ def clustering(rgba, cluster_centers):
     x_len = len(rgba)
     y_len = len(rgba[0])
     cluster_dic = [[] for _ in range(0, N)]
-    cluster_dic_prev = []
     itr = 0
     new_image = [[[0] * 4 for _ in range(y_len)] for _ in range(x_len)]
     while True:
@@ -255,18 +204,9 @@ def clustering(rgba, cluster_centers):
                 cluster_centers[i][1] = summ_g // len(current_cluster)
                 cluster_centers[i][2] = summ_b // len(current_cluster)
                 cluster_centers[i][3] = summ_a // len(current_cluster)
-        equality = True
-        if len(cluster_dic_prev) > 0:
-            for i in range(0, N):
-                if cluster_dic_prev[i] != cluster_dic[i]:
-                    equality = False
-                    break
-        else:
-            equality = False
-        cluster_dic_prev = copy.deepcopy(cluster_dic)
         print(itr)
         itr += 1
-        if equality or itr > 3:
+        if itr > 3:
             break
     return new_image
 
@@ -293,6 +233,7 @@ def vectorization(image_contours):
     image.save()
 
 
+
 original_image = io.imread('img_1.jpg')
 
 max_dimension = 200
@@ -307,6 +248,7 @@ else:
     height = int(original_image.shape[0] * scale_percent / 100)
 # width = height = 200
 dimensions = (width, height)
+sys.setrecursionlimit(width * height)
 
 resized = cv2.resize(original_image, dimensions, interpolation=cv2.INTER_AREA)
 rgba_image = cv2.cvtColor(resized, cv2.COLOR_RGB2RGBA)

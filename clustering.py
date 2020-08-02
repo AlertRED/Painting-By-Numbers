@@ -56,6 +56,11 @@ def get_new_start(is_counted):
 
 
 def get_polygon(image, curr_x, curr_y, status_matrix):
+    def compare(x, y):
+        if is_equal(color, image[x][y]) and status_matrix[x][y] == PolygonStatus.not_counted.value:
+                polygon.append((x, y))
+                status_matrix[x][y] = PolygonStatus.recounted.value
+
     polygon = [(curr_x, curr_y)]
     color = image[curr_x][curr_y]
     status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
@@ -64,26 +69,14 @@ def get_polygon(image, curr_x, curr_y, status_matrix):
     index = 0
     while index < len(polygon):
         curr_x, curr_y = polygon[index]
-        if curr_y - 1 >= 0 and \
-                is_equal(color, image[curr_x][curr_y - 1]) and \
-                status_matrix[curr_x][curr_y - 1] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x, curr_y - 1))
-            status_matrix[curr_x][curr_y - 1] = PolygonStatus.recounted.value
-        if curr_y + 1 < y_len and \
-                is_equal(color, image[curr_x][curr_y + 1]) and \
-                status_matrix[curr_x][curr_y + 1] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x, curr_y + 1))
-            status_matrix[curr_x][curr_y + 1] = PolygonStatus.recounted.value
-        if curr_x - 1 >= 0 and \
-                is_equal(color, image[curr_x - 1][curr_y]) and \
-                status_matrix[curr_x - 1][curr_y] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x - 1, curr_y))
-            status_matrix[curr_x - 1][curr_y] = PolygonStatus.recounted.value
-        if curr_x + 1 < x_len and \
-                is_equal(color, image[curr_x + 1][curr_y]) and \
-                status_matrix[curr_x + 1][curr_y] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x + 1, curr_y))
-            status_matrix[curr_x + 1][curr_y] = PolygonStatus.recounted.value
+        if curr_y - 1 >= 0:
+            compare(curr_x, curr_y - 1)
+        if curr_y + 1 < y_len:
+            compare(curr_x, curr_y + 1)
+        if curr_x - 1 >= 0:
+            compare(curr_x - 1, curr_y)
+        if curr_x + 1 < x_len:
+            compare(curr_x + 1, curr_y)
         index += 1
     return polygon
 

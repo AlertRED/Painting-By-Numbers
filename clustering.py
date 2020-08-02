@@ -1,12 +1,10 @@
-import copy
-import sys
 import math
-from timeit import default_timer as timer
-import cv2
-import svgwrite
-import numpy as np
-from skimage import io
+import sys
 from enum import Enum
+import cv2
+import numpy as np
+import svgwrite
+from skimage import io
 
 
 class PolygonStatus(Enum):
@@ -15,22 +13,28 @@ class PolygonStatus(Enum):
     not_counted = 2
 
 
+def benchmark(func):
+    import time
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        print('[*] Время выполнения {}: {} секунд.'.format(func.__name__, end - start))
+        return result
+
+    return wrapper
+
+
 def is_equal(list_1, list_2):
-    flag = True
-    for i in range(len(list_1)):
-        if list_1[i] != list_2[i]:
-            flag = False
-            break
-    return flag
-
-
-def is_all_recounted(matrix):
-    flag = True
-    for line in matrix:
-        if 2 in line:
-            flag = False
-            break
-    return flag
+    if list_1[0] != list_2[0]:
+        return False
+    if list_1[1] != list_2[1]:
+        return False
+    if list_1[2] != list_2[2]:
+        return False
+    if list_1[3] != list_2[3]:
+        return False
+    return True
 
 
 def get_new_start(is_counted):
@@ -51,47 +55,56 @@ def get_new_start(is_counted):
     return x, y
 
 
-def get_polygon(image, curr_x, curr_y, status_matrix, polygon):
-    polygon.append((curr_x, curr_y))
+def get_polygon(image, curr_x, curr_y, status_matrix):
+    polygon = [(curr_x, curr_y)]
     color = image[curr_x][curr_y]
     status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
     x_len = len(image)
     y_len = len(image[0])
-    if curr_y - 1 >= 0 and \
-            is_equal(color, image[curr_x][curr_y - 1]) and \
-            status_matrix[curr_x][curr_y - 1] == PolygonStatus.not_counted.value:
-        get_polygon(image, curr_x, curr_y - 1, status_matrix, polygon)
-    if curr_y + 1 < y_len and \
-            is_equal(color, image[curr_x][curr_y + 1]) and \
-            status_matrix[curr_x][curr_y + 1] == PolygonStatus.not_counted.value:
-        get_polygon(image, curr_x, curr_y + 1, status_matrix, polygon)
-    if curr_x - 1 >= 0 and \
-            is_equal(color, image[curr_x - 1][curr_y]) and \
-            status_matrix[curr_x - 1][curr_y] == PolygonStatus.not_counted.value:
-        get_polygon(image, curr_x - 1, curr_y, status_matrix, polygon)
-    if curr_x + 1 < x_len and \
-            is_equal(color, image[curr_x + 1][curr_y]) and \
-            status_matrix[curr_x + 1][curr_y] == PolygonStatus.not_counted.value:
-        get_polygon(image, curr_x + 1, curr_y, status_matrix, polygon)
+    index = 0
+    while index < len(polygon):
+        curr_x, curr_y = polygon[index]
+        if curr_y - 1 >= 0 and \
+                is_equal(color, image[curr_x][curr_y - 1]) and \
+                status_matrix[curr_x][curr_y - 1] == PolygonStatus.not_counted.value:
+            polygon.append((curr_x, curr_y - 1))
+            status_matrix[curr_x][curr_y - 1] = PolygonStatus.recounted.value
+        if curr_y + 1 < y_len and \
+                is_equal(color, image[curr_x][curr_y + 1]) and \
+                status_matrix[curr_x][curr_y + 1] == PolygonStatus.not_counted.value:
+            polygon.append((curr_x, curr_y + 1))
+            status_matrix[curr_x][curr_y + 1] = PolygonStatus.recounted.value
+        if curr_x - 1 >= 0 and \
+                is_equal(color, image[curr_x - 1][curr_y]) and \
+                status_matrix[curr_x - 1][curr_y] == PolygonStatus.not_counted.value:
+            polygon.append((curr_x - 1, curr_y))
+            status_matrix[curr_x - 1][curr_y] = PolygonStatus.recounted.value
+        if curr_x + 1 < x_len and \
+                is_equal(color, image[curr_x + 1][curr_y]) and \
+                status_matrix[curr_x + 1][curr_y] == PolygonStatus.not_counted.value:
+            polygon.append((curr_x + 1, curr_y))
+            status_matrix[curr_x + 1][curr_y] = PolygonStatus.recounted.value
+        index += 1
+    return polygon
 
 
+@benchmark
 def polygon_recount(image_matrix):
     curr_x = curr_y = 0
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
     min_limit = int(x_len * y_len / 100 * 0.005)
+    already_counted = 0
+    total_pixel_amount = x_len * y_len
     print('min lim - ', min_limit)
     is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
-    while not is_all_recounted(is_counted):
-        current_polygon = []
-        get_polygon(image_matrix, curr_x, curr_y, is_counted, current_polygon)
-        if len(current_polygon) > min_limit:
-            for x, y in current_polygon:
-                is_counted[x][y] = PolygonStatus.recounted.value
-        else:
+    while already_counted < total_pixel_amount:
+        current_polygon = get_polygon(image_matrix, curr_x, curr_y, is_counted)
+        already_counted += len(current_polygon)
+        if len(current_polygon) <= min_limit:
             for x, y in current_polygon:
                 is_counted[x][y] = PolygonStatus.too_small.value
-        if not is_all_recounted(is_counted):
+        if already_counted < total_pixel_amount:
             curr_x, curr_y = get_new_start(is_counted)
     return is_counted
 
@@ -106,6 +119,7 @@ def pixel_difference(center, pixel):
     return distance
 
 
+@benchmark
 def polygon_merge(image_matrix, polygon_status):
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
@@ -171,6 +185,7 @@ def contouring(image_matrix):
     return final_img
 
 
+@benchmark
 def clustering(rgba, cluster_centers):
     x_len = len(rgba)
     y_len = len(rgba[0])
@@ -233,8 +248,7 @@ def vectorization(image_contours):
     image.save()
 
 
-
-original_image = io.imread('img_1.jpg')
+original_image = io.imread('img_2.jpg')
 
 max_dimension = 200
 original_dimensions = [original_image.shape[0], original_image.shape[1]]
@@ -267,11 +281,8 @@ cluster_centers = np.asarray(cluster_centers)
 
 new_img = [[[0] * 4 for _ in range(dimensions[0])] for _ in range(dimensions[1])]
 
-start = timer()
 # clustering k-means
 new_img = clustering(rgba_image, cluster_centers)
-end = timer()
-print('Time - ', end - start)
 
 polygon_status = polygon_recount(new_img)
 image_recounted = polygon_merge(new_img, polygon_status)

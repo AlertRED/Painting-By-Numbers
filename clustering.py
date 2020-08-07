@@ -37,29 +37,11 @@ def is_equal(list_1, list_2):
     return True
 
 
-def get_new_start(is_counted):
-    x_len = len(is_counted)
-    y_len = len(is_counted[0])
-    already_counted = True
-    x = y = 0
-    while already_counted:
-        if is_counted[x][y] == PolygonStatus.not_counted.value:
-            already_counted = False
-        elif y < y_len - 1:
-            y += 1
-        elif x < x_len - 1:
-            x += 1
-            y = 0
-        else:
-            break
-    return x, y
-
-
 def get_polygon(image, curr_x, curr_y, status_matrix):
     def compare(x, y):
         if is_equal(color, image[x][y]) and status_matrix[x][y] == PolygonStatus.not_counted.value:
-                polygon.append((x, y))
-                status_matrix[x][y] = PolygonStatus.recounted.value
+            polygon.append((x, y))
+            status_matrix[x][y] = PolygonStatus.recounted.value
 
     polygon = [(curr_x, curr_y)]
     color = image[curr_x][curr_y]
@@ -83,22 +65,18 @@ def get_polygon(image, curr_x, curr_y, status_matrix):
 
 @benchmark
 def polygon_recount(image_matrix):
-    curr_x = curr_y = 0
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
     min_limit = int(x_len * y_len / 100 * 0.005)
-    already_counted = 0
-    total_pixel_amount = x_len * y_len
     print('min lim - ', min_limit)
     is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
-    while already_counted < total_pixel_amount:
-        current_polygon = get_polygon(image_matrix, curr_x, curr_y, is_counted)
-        already_counted += len(current_polygon)
-        if len(current_polygon) <= min_limit:
-            for x, y in current_polygon:
-                is_counted[x][y] = PolygonStatus.too_small.value
-        if already_counted < total_pixel_amount:
-            curr_x, curr_y = get_new_start(is_counted)
+    for x in range(x_len):
+        for y in range(y_len):
+            if is_counted[x][y] == PolygonStatus.not_counted.value:
+                current_polygon = get_polygon(image_matrix, x, y, is_counted)
+                if len(current_polygon) <= min_limit:
+                    for x_curr, y_curr in current_polygon:
+                        is_counted[x_curr][y_curr] = PolygonStatus.too_small.value
     return is_counted
 
 
@@ -243,7 +221,7 @@ def vectorization(image_contours):
 
 original_image = io.imread('img_2.jpg')
 
-max_dimension = 200
+max_dimension = 300
 original_dimensions = [original_image.shape[0], original_image.shape[1]]
 if max(original_dimensions[0], original_dimensions[1]) == original_image.shape[0]:
     height = max_dimension

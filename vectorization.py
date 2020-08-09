@@ -8,6 +8,13 @@ class CheckingDepth(Enum):
 	larger_stage = 2
 
 
+class DirectionPriority(Enum):
+	left = 0
+	up = 1
+	right = 2
+	down = 3
+
+
 def outer_remover(list):
 	outers = []
 	for elem in list:
@@ -26,74 +33,59 @@ def is_all_used(list):
 	return True
 
 
-def check_upside(x, y, polygon, edges, stage, start):
-	curr_x = x - 1
-	curr_y = y
-	if (curr_x, curr_y) in polygon:
-		if stage == CheckingDepth.larger_stage.value:
-			index = 1
-			while True:
-				if (curr_x, curr_y + index) in polygon:
-					index += 1
-				else:
-					curr_y = curr_y + index - 1
-					break
-		edges.append((curr_x, curr_y))
-		check_upside(curr_x, curr_y, polygon, edges, CheckingDepth.larger_stage.value, start)
+def get_left_side(x, y, polygon):
+	if (x, y - 1) in polygon:
+		return True
 	else:
-		if stage == CheckingDepth.larger_stage.value:
-			index = 1
-			is_end = False
-			while True:
-				if (x, y - index) in polygon:
-					if (curr_x, y - index) in polygon:
-						curr_y = y - index
-						edges.append((curr_x, curr_y))
-						check_upside(curr_x, curr_y, polygon, edges, CheckingDepth.larger_stage.value, start)
-						break
-					else:
-						index += 1
-				else:
-					is_end = True
-					break
-			if is_end:
-				down_x = x + 1
-				down_y = curr_y
-				# while (_x, down_y) in polygon:
-				# 	down_y -= 1
-				# if down_y != curr_y:
-				# 	edges += "L%d,%d " % (curr_x, down_y)
-				while down_x < start:
-					if (down_x, down_y) in polygon:
-						while (down_x, down_y - 1) in polygon:
-							down_y -= 1
-						edges.append((down_x, down_y))
-						down_x += 1
-					else:
-						while True:
-							if (down_x - 1, down_y + 1) in polygon:
-								if (down_x, down_y + 1) in polygon:
-									down_y += 1
-									edges.append((down_x, down_y))
-									down_x += 1
-									break
-								else:
-									down_y += 1
-							else:
-								break
+		return False
 
 
-def get_left_start(x, y, polygon, edges):
+def get_upper_side(x, y, polygon):
+	if (x - 1, y) in polygon:
+		return True
+	else:
+		return False
+
+
+def get_right_side(x, y, polygon):
+	if (x, y + 1) in polygon:
+		return True
+	else:
+		return False
+
+
+def get_down_side(x, y, polygon):
+	if (x + 1, y) in polygon:
+		return True
+	else:
+		return False
+
+
+def try_right_side(x, y, polygon):
+	index = 1
+	while True:
+		if (x, y + index) in polygon:
+			if (x + 1, y + index) in polygon:
+				return True
+			else:
+				index += 1
+		else:
+			return False
+
+
+def try_left_side(x, y, polygon):
 	index = 1
 	while True:
 		if (x, y - index) in polygon:
-			check_upside(x, y - index, polygon, edges, CheckingDepth.first_stage.value, x)
-			index += 1
+			if (x - 1, y - index) in polygon:
+				return True
+			else:
+				index += 1
 		else:
-			return x, y - index + 1
+			return False
 
 
-def get_right_start(x, y, polygon):
+def move_to_right(x, y, polygon):
 	index = 1
 	while True:
 		if (x, y + index) in polygon:
@@ -101,8 +93,16 @@ def get_right_start(x, y, polygon):
 				return x + 1, y + index
 			else:
 				index += 1
-		else:
-			return None
+
+
+def move_to_left(x, y, polygon):
+	index = 1
+	while True:
+		if (x, y - index) in polygon:
+			if (x - 1, y - index) in polygon:
+				return x - 1, y - index
+			else:
+				index += 1
 
 
 current_polygon = [(2, 7), (1, 9), (1, 10), (2, 8), (2, 9), (2, 10), (3, 8), (3, 9), (3, 10), (2, 16), (3, 16), (4, 3),
@@ -116,46 +116,74 @@ current_polygon = [(2, 7), (1, 9), (1, 10), (2, 8), (2, 9), (2, 10), (3, 8), (3,
 current_polygon.sort()
 print(current_polygon)
 test = svgwrite.Drawing('test.svg', profile='tiny')
-x_start = current_polygon[0][0]
-y_start = current_polygon[0][1]
-string = "M%d,%d " % (x_start, y_start)
-ordered_edges = [(x_start, y_start)]
 
+edge_x = current_polygon[0][0]
+edge_y = current_polygon[0][1]
+
+string = "M%d,%d " % (edge_x, edge_y)
+ordered_edges = [(edge_x, edge_y)]
+
+is_edge = False
+priority = DirectionPriority.down.value
 while True:
-	edge_x = x_start + 1
-	edge_y = y_start
-	if (edge_x, edge_y) in current_polygon:
-		edge_x, edge_y = get_left_start(edge_x, edge_y, current_polygon, ordered_edges)
-		ordered_edges.append((edge_x, edge_y))
-		x_start = edge_x
-		y_start = edge_y
-	else:
-		edge_x, edge_y = get_right_start(x_start, y_start, current_polygon)
-		ordered_edges.append((edge_x, edge_y))
-		x_start = edge_x
-		y_start = edge_y
-
-# starts = [(x_start, y_start)]
-# ends = []
-# position = 1
-# while position < len(current_polygon):
-#     current_pix = current_polygon[position]
-#     prev_pix = current_polygon[position - 1]
-#     if current_pix[0] != x_start or (current_pix[1] != prev_pix[1] + 1 and current_pix[0] == x_start):
-#         x_start = current_pix[0]
-#         y_start = current_pix[1]
-#         if position < len(current_polygon) - 1 and current_polygon[position + 1][0] == x_start:
-#             starts.append((x_start, y_start))
-#         ends.append((prev_pix[0], prev_pix[1]))
-#     position += 1
-#     if position >= len(current_polygon):
-#         if (current_pix[0], current_pix[1]) not in ends:
-#             ends.append((current_pix[0], current_pix[1]))
-# outer_remover(starts)
-# outer_remover(ends)
-# for x, y in edges:
-# 	edges += "L%d,%d " % (x, y)
-
+	if priority == DirectionPriority.down.value:
+		if get_down_side(edge_x, edge_y, current_polygon):
+			edge_x += 1
+			priority = DirectionPriority.left.value
+		elif try_right_side(edge_x, edge_y, current_polygon):
+			edge_x, edge_y = move_to_right(edge_x, edge_y, current_polygon)
+			is_edge = True
+		if is_edge:
+			ordered_edges.append((edge_x, edge_y))
+			is_edge = False
+	if priority == DirectionPriority.left.value:
+		if get_left_side(edge_x, edge_y, current_polygon):
+			edge_y -= 1
+			if get_upper_side(edge_x, edge_y, current_polygon) and not get_upper_side(edge_x, edge_y + 1,
+																					  current_polygon):
+				edge_x -= 1
+				priority = DirectionPriority.up.value
+				is_edge = True
+			elif get_down_side(edge_x, edge_y, current_polygon) and not get_down_side(edge_x, edge_y + 1,
+																					  current_polygon):
+				edge_x += 1
+				priority = DirectionPriority.down.value
+				is_edge = True
+		else:
+			is_edge = True
+			priority = DirectionPriority.down.value
+		if is_edge:
+			ordered_edges.append((edge_x, edge_y))
+			is_edge = False
+	if priority == DirectionPriority.up.value:
+		if get_upper_side(edge_x, edge_y, current_polygon):
+			edge_x -= 1
+			priority = DirectionPriority.right.value
+		elif try_left_side(edge_x, edge_y, current_polygon):
+			edge_x, edge_y = move_to_left(edge_x, edge_y, current_polygon)
+			is_edge = True
+		if is_edge:
+			ordered_edges.append((edge_x, edge_y))
+			is_edge = False
+	if priority == DirectionPriority.right.value:
+		if get_right_side(edge_x, edge_y, current_polygon):
+			edge_y += 1
+			if get_upper_side(edge_x, edge_y, current_polygon) and not get_upper_side(edge_x, edge_y - 1,
+																					  current_polygon):
+				edge_x -= 1
+				priority = DirectionPriority.up.value
+				is_edge = True
+			elif get_down_side(edge_x, edge_y, current_polygon) and not get_down_side(edge_x, edge_y - 1,
+																					  current_polygon):
+				edge_x += 1
+				priority = DirectionPriority.down.value
+				is_edge = True
+		else:
+			is_edge = True
+			priority = DirectionPriority.up.value
+		if is_edge:
+			ordered_edges.append((edge_x, edge_y))
+			is_edge = False
 
 string += "Z"
 print(string)

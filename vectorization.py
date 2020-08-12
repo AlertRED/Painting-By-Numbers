@@ -1,11 +1,5 @@
 import svgwrite
-import sys
 from enum import Enum
-
-
-class CheckingDepth(Enum):
-	first_stage = 1
-	larger_stage = 2
 
 
 class DirectionPriority(Enum):
@@ -24,13 +18,6 @@ def outer_remover(list):
 			outers.append(elem)
 	for elem in outers:
 		list.remove(elem)
-
-
-def is_all_used(list):
-	for elem in list:
-		if elem[2] == 0:
-			return False
-	return True
 
 
 def get_left_side(x, y, polygon):
@@ -105,6 +92,13 @@ def move_to_left(x, y, polygon):
 				index += 1
 
 
+def is_start(x, y, edges):
+	if edges[0][0] == x and edges[0][1] == y:
+		return True
+	else:
+		return False
+
+
 current_polygon = [(2, 7), (1, 9), (1, 10), (2, 8), (2, 9), (2, 10), (3, 8), (3, 9), (3, 10), (2, 16), (3, 16), (4, 3),
 				   (4, 4), (4, 5), (4, 8), (4, 9), (4, 10), (4, 12), (4, 13), (4, 14), (4, 15), (4, 16), (5, 3), (5, 4),
 				   (5, 5), (5, 8), (5, 9), (5, 10), (5, 14), (5, 15), (5, 16), (6, 5), (6, 6), (6, 7), (6, 8), (6, 13),
@@ -126,13 +120,21 @@ ordered_edges = [(edge_x, edge_y)]
 is_edge = False
 priority = DirectionPriority.down.value
 while True:
+	if is_start(edge_x, edge_y, ordered_edges) and len(ordered_edges) > 1:
+		break
 	if priority == DirectionPriority.down.value:
 		if get_down_side(edge_x, edge_y, current_polygon):
 			edge_x += 1
 			priority = DirectionPriority.left.value
+		elif get_left_side(edge_x, edge_y, current_polygon):
+			edge_y -= 1
+			priority = DirectionPriority.left.value
 		elif try_right_side(edge_x, edge_y, current_polygon):
 			edge_x, edge_y = move_to_right(edge_x, edge_y, current_polygon)
 			is_edge = True
+		elif get_right_side(edge_x, edge_y, current_polygon):
+			edge_y += 1
+			priority = DirectionPriority.right.value
 		if is_edge:
 			ordered_edges.append((edge_x, edge_y))
 			is_edge = False
@@ -144,11 +146,6 @@ while True:
 				edge_x -= 1
 				priority = DirectionPriority.up.value
 				is_edge = True
-			elif get_down_side(edge_x, edge_y, current_polygon) and not get_down_side(edge_x, edge_y + 1,
-																					  current_polygon):
-				edge_x += 1
-				priority = DirectionPriority.down.value
-				is_edge = True
 		else:
 			is_edge = True
 			priority = DirectionPriority.down.value
@@ -159,22 +156,25 @@ while True:
 		if get_upper_side(edge_x, edge_y, current_polygon):
 			edge_x -= 1
 			priority = DirectionPriority.right.value
+		elif get_right_side(edge_x, edge_y, current_polygon):
+			edge_y += 1
+			priority = DirectionPriority.right.value
 		elif try_left_side(edge_x, edge_y, current_polygon):
 			edge_x, edge_y = move_to_left(edge_x, edge_y, current_polygon)
 			is_edge = True
+		elif get_left_side(edge_x, edge_y, current_polygon):
+			edge_y -= 1
+			priority = DirectionPriority.left.value
+		else:
+			priority = DirectionPriority.down.value
 		if is_edge:
 			ordered_edges.append((edge_x, edge_y))
 			is_edge = False
 	if priority == DirectionPriority.right.value:
 		if get_right_side(edge_x, edge_y, current_polygon):
 			edge_y += 1
-			if get_upper_side(edge_x, edge_y, current_polygon) and not get_upper_side(edge_x, edge_y - 1,
-																					  current_polygon):
-				edge_x -= 1
-				priority = DirectionPriority.up.value
-				is_edge = True
-			elif get_down_side(edge_x, edge_y, current_polygon) and not get_down_side(edge_x, edge_y - 1,
-																					  current_polygon):
+			if get_down_side(edge_x, edge_y, current_polygon) and not get_down_side(edge_x, edge_y - 1,
+																					current_polygon):
 				edge_x += 1
 				priority = DirectionPriority.down.value
 				is_edge = True
@@ -186,6 +186,7 @@ while True:
 			is_edge = False
 
 string += "Z"
+print(ordered_edges)
 print(string)
 test_path = test.path(d=string,
 					  stroke="#000",

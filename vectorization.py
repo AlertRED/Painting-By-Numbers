@@ -93,7 +93,7 @@ def move_to_left(x, y, polygon):
 
 
 def is_start(x, y, edges):
-	if edges[0][0] == x and edges[0][1] == y:
+	if edges[0][1] == x and edges[0][0] == y:
 		return True
 	else:
 		return False
@@ -114,8 +114,8 @@ test = svgwrite.Drawing('test.svg', profile='tiny')
 edge_x = current_polygon[0][0]
 edge_y = current_polygon[0][1]
 
-string = "M%d,%d " % (edge_x, edge_y)
-ordered_edges = [(edge_x, edge_y)]
+string = "M%d,%d " % (edge_y, edge_x)
+ordered_edges = [(edge_y, edge_x)]
 
 is_edge = False
 priority = DirectionPriority.down.value
@@ -134,9 +134,11 @@ while True:
 			is_edge = True
 		elif get_right_side(edge_x, edge_y, current_polygon):
 			edge_y += 1
+			is_edge = True
 			priority = DirectionPriority.right.value
 		if is_edge:
-			ordered_edges.append((edge_x, edge_y))
+			if (edge_y, edge_x) not in ordered_edges:
+				ordered_edges.append((edge_y, edge_x))
 			is_edge = False
 	if priority == DirectionPriority.left.value:
 		if get_left_side(edge_x, edge_y, current_polygon):
@@ -150,7 +152,8 @@ while True:
 			is_edge = True
 			priority = DirectionPriority.down.value
 		if is_edge:
-			ordered_edges.append((edge_x, edge_y))
+			if (edge_y, edge_x) not in ordered_edges:
+				ordered_edges.append((edge_y, edge_x))
 			is_edge = False
 	if priority == DirectionPriority.up.value:
 		if get_upper_side(edge_x, edge_y, current_polygon):
@@ -164,11 +167,13 @@ while True:
 			is_edge = True
 		elif get_left_side(edge_x, edge_y, current_polygon):
 			edge_y -= 1
+			is_edge = True
 			priority = DirectionPriority.left.value
 		else:
 			priority = DirectionPriority.down.value
 		if is_edge:
-			ordered_edges.append((edge_x, edge_y))
+			if (edge_y, edge_x) not in ordered_edges:
+				ordered_edges.append((edge_y, edge_x))
 			is_edge = False
 	if priority == DirectionPriority.right.value:
 		if get_right_side(edge_x, edge_y, current_polygon):
@@ -182,11 +187,28 @@ while True:
 			is_edge = True
 			priority = DirectionPriority.up.value
 		if is_edge:
-			ordered_edges.append((edge_x, edge_y))
+			if (edge_y, edge_x) not in ordered_edges:
+				ordered_edges.append((edge_y, edge_x))
 			is_edge = False
 
-string += "Z"
 print(ordered_edges)
+x_prev = edge_x
+y_prev = edge_y
+for y, x in ordered_edges:
+	if y != edge_y and x != edge_x:
+		if x == x_prev and y_prev > y and y_prev - y > 1:
+			x1 = x + 1
+			y1 = int((y_prev + y) / 2)
+			string += "Q%d,%d %d,%d " % (y1, x1, y, x)
+		if x == x_prev and y > y_prev and y - y_prev > 1:
+			x1 = x - 1
+			y1 = int((y_prev + y) / 2)
+			string += "Q%d,%d %d,%d " % (y1, x1, y, x)
+		else:
+			string += "L%d,%d " % (y, x)
+		x_prev = x
+		y_prev = y
+string += "Z"
 print(string)
 test_path = test.path(d=string,
 					  stroke="#000",

@@ -3,6 +3,7 @@ import sys
 from enum import Enum
 import cv2
 import numpy as np
+import vectorization
 import svgwrite
 from skimage import io
 
@@ -211,12 +212,41 @@ def coloring(image, image_contours):
     return colored_image
 
 
-def vectorization(image_contours):
-    x_len = len(image_contours)
-    y_len = len(image_contours[0])
-    image = svgwrite.Drawing('contours.svg', size=(x_len, y_len))
-
-    image.save()
+@benchmark
+def image_to_svg(image):
+    x_len = len(image)
+    y_len = len(image[0])
+    is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
+    svg_image = svgwrite.Drawing('vectorized_image.svg', profile='tiny')
+    for x in range(x_len):
+        for y in range(y_len):
+            if is_counted[x][y] == PolygonStatus.not_counted.value:
+                current_polygon = get_polygon(image, x, y, is_counted)
+                edges = vectorization.start_vectorization(current_polygon)
+                string = "M%d,%d " % (current_polygon[0][1], current_polygon[0][0])
+                x_prev = x_start = current_polygon[0][0]
+                y_prev = y_start = current_polygon[0][1]
+                for y, x in edges:
+                    if (y, x) != (y_start, x_start):
+                        if x == x_prev and y_prev > y and y_prev - y > 1:
+                            x1 = x + 1
+                            y1 = int((y_prev + y) / 2)
+                            string += "Q%d,%d %d,%d " % (y1, x1, y, x)
+                        if x == x_prev and y > y_prev and y - y_prev > 1:
+                            x1 = x - 1
+                            y1 = int((y_prev + y) / 2)
+                            string += "Q%d,%d %d,%d " % (y1, x1, y, x)
+                        else:
+                            string += "L%d,%d " % (y, x)
+                        x_prev = x
+                        y_prev = y
+                string += "Z"
+                polygon_path = svg_image.path(d=string,
+                                              stroke="#000",
+                                              fill='white',
+                                              stroke_width=0.1)
+                svg_image.add(polygon_path)
+    svg_image.save()
 
 
 original_image = io.imread('img_2.jpg')
@@ -265,7 +295,7 @@ contours = contouring(image_recounted)
 result = cv2.cvtColor(np.asarray(coloring(image_recounted, contours)), cv2.COLOR_RGBA2BGR)
 
 contoured_image = cv2.cvtColor(np.asarray(contours), cv2.COLOR_RGBA2BGR)
-vectorization(contours)
+image_to_svg(image_recounted)
 
 cv2.imshow("result", result)
 cv2.imshow("contours", contoured_image)

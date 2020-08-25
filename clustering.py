@@ -220,38 +220,21 @@ def image_to_svg(image):
     svg_image = svgwrite.Drawing('vectorized_image.svg', profile='tiny')
     for x in range(x_len):
         for y in range(y_len):
+            color = []
             if is_counted[x][y] == PolygonStatus.not_counted.value:
                 current_polygon = get_polygon(image, x, y, is_counted)
+                for ind in range(3):
+                    color.append(image[x][y][ind])
                 edges = vectorization.start_vectorization(current_polygon)
-                string = "M%d,%d " % (current_polygon[0][1], current_polygon[0][0])
-                x_prev = x_start = current_polygon[0][0]
-                y_prev = y_start = current_polygon[0][1]
-                for y, x in edges:
-                    if (y, x) != (y_start, x_start):
-                        if x == x_prev and y_prev > y and y_prev - y > 1:
-                            x1 = x + 1
-                            y1 = int((y_prev + y) / 2)
-                            string += "Q%d,%d %d,%d " % (y1, x1, y, x)
-                        if x == x_prev and y > y_prev and y - y_prev > 1:
-                            x1 = x - 1
-                            y1 = int((y_prev + y) / 2)
-                            string += "Q%d,%d %d,%d " % (y1, x1, y, x)
-                        else:
-                            string += "L%d,%d " % (y, x)
-                        x_prev = x
-                        y_prev = y
-                string += "Z"
-                polygon_path = svg_image.path(d=string,
-                                              stroke="#000",
-                                              fill='white',
-                                              stroke_width=0.1)
+                polygon_path = svgwrite.shapes.Polyline(points=edges, fill=svgwrite.rgb(color[0], color[1], color[2]), stroke="#000", stroke_width=0.5)
+                polygon_path.translate(1)
                 svg_image.add(polygon_path)
     svg_image.save()
 
 
-original_image = io.imread('img_2.jpg')
+original_image = io.imread('img_1.jpg')
 
-max_dimension = 300
+max_dimension = 200
 original_dimensions = [original_image.shape[0], original_image.shape[1]]
 if max(original_dimensions[0], original_dimensions[1]) == original_image.shape[0]:
     height = max_dimension
@@ -297,9 +280,9 @@ result = cv2.cvtColor(np.asarray(coloring(image_recounted, contours)), cv2.COLOR
 contoured_image = cv2.cvtColor(np.asarray(contours), cv2.COLOR_RGBA2BGR)
 image_to_svg(image_recounted)
 
-cv2.imshow("result", result)
-cv2.imshow("contours", contoured_image)
-cv2.imshow("clusters", clustered_image)
+# cv2.imshow("result", result)
+# cv2.imshow("contours", contoured_image)
+# cv2.imshow("clusters", clustered_image)
 # out = contouring(new_img)
 # cv2.imshow("clust", cv2.cvtColor(np.asarray(new_img), cv2.COLOR_RGBA2BGR))
 # cv2.imshow("clusters", cv2.cvtColor(np.asarray(out), cv2.COLOR_RGBA2BGR))

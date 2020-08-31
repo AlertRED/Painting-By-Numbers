@@ -3,6 +3,7 @@ import sys
 from enum import Enum
 import cv2
 import numpy as np
+import vectorization
 import svgwrite
 from skimage import io
 
@@ -37,25 +38,12 @@ def is_equal(list_1, list_2):
     return True
 
 
-def get_new_start(is_counted):
-    x_len = len(is_counted)
-    y_len = len(is_counted[0])
-    already_counted = True
-    x = y = 0
-    while already_counted:
-        if is_counted[x][y] == PolygonStatus.not_counted.value:
-            already_counted = False
-        elif y < y_len - 1:
-            y += 1
-        elif x < x_len - 1:
-            x += 1
-            y = 0
-        else:
-            break
-    return x, y
-
-
 def get_polygon(image, curr_x, curr_y, status_matrix):
+    def compare(x, y):
+        if is_equal(color, image[x][y]) and status_matrix[x][y] == PolygonStatus.not_counted.value:
+            polygon.append((x, y))
+            status_matrix[x][y] = PolygonStatus.recounted.value
+
     polygon = [(curr_x, curr_y)]
     color = image[curr_x][curr_y]
     status_matrix[curr_x][curr_y] = PolygonStatus.recounted.value
@@ -64,48 +52,32 @@ def get_polygon(image, curr_x, curr_y, status_matrix):
     index = 0
     while index < len(polygon):
         curr_x, curr_y = polygon[index]
-        if curr_y - 1 >= 0 and \
-                is_equal(color, image[curr_x][curr_y - 1]) and \
-                status_matrix[curr_x][curr_y - 1] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x, curr_y - 1))
-            status_matrix[curr_x][curr_y - 1] = PolygonStatus.recounted.value
-        if curr_y + 1 < y_len and \
-                is_equal(color, image[curr_x][curr_y + 1]) and \
-                status_matrix[curr_x][curr_y + 1] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x, curr_y + 1))
-            status_matrix[curr_x][curr_y + 1] = PolygonStatus.recounted.value
-        if curr_x - 1 >= 0 and \
-                is_equal(color, image[curr_x - 1][curr_y]) and \
-                status_matrix[curr_x - 1][curr_y] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x - 1, curr_y))
-            status_matrix[curr_x - 1][curr_y] = PolygonStatus.recounted.value
-        if curr_x + 1 < x_len and \
-                is_equal(color, image[curr_x + 1][curr_y]) and \
-                status_matrix[curr_x + 1][curr_y] == PolygonStatus.not_counted.value:
-            polygon.append((curr_x + 1, curr_y))
-            status_matrix[curr_x + 1][curr_y] = PolygonStatus.recounted.value
+        if curr_y - 1 >= 0:
+            compare(curr_x, curr_y - 1)
+        if curr_y + 1 < y_len:
+            compare(curr_x, curr_y + 1)
+        if curr_x - 1 >= 0:
+            compare(curr_x - 1, curr_y)
+        if curr_x + 1 < x_len:
+            compare(curr_x + 1, curr_y)
         index += 1
     return polygon
 
 
 @benchmark
 def polygon_recount(image_matrix):
-    curr_x = curr_y = 0
     x_len = len(image_matrix)
     y_len = len(image_matrix[0])
     min_limit = int(x_len * y_len / 100 * 0.005)
-    already_counted = 0
-    total_pixel_amount = x_len * y_len
     print('min lim - ', min_limit)
     is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
-    while already_counted < total_pixel_amount:
-        current_polygon = get_polygon(image_matrix, curr_x, curr_y, is_counted)
-        already_counted += len(current_polygon)
-        if len(current_polygon) <= min_limit:
-            for x, y in current_polygon:
-                is_counted[x][y] = PolygonStatus.too_small.value
-        if already_counted < total_pixel_amount:
-            curr_x, curr_y = get_new_start(is_counted)
+    for x in range(x_len):
+        for y in range(y_len):
+            if is_counted[x][y] == PolygonStatus.not_counted.value:
+                current_polygon = get_polygon(image_matrix, x, y, is_counted)
+                if len(current_polygon) <= min_limit:
+                    for x_curr, y_curr in current_polygon:
+                        is_counted[x_curr][y_curr] = PolygonStatus.too_small.value
     return is_counted
 
 
@@ -240,15 +212,27 @@ def coloring(image, image_contours):
     return colored_image
 
 
-def vectorization(image_contours):
-    x_len = len(image_contours)
-    y_len = len(image_contours[0])
-    image = svgwrite.Drawing('contours.svg', size=(x_len, y_len))
+@benchmark
+def image_to_svg(image):
+    x_len = len(image)
+    y_len = len(image[0])
+    is_counted = [[PolygonStatus.not_counted.value] * y_len for _ in range(x_len)]
+    svg_image = svgwrite.Drawing('vectorized_image.svg', profile='tiny')
+    for x in range(x_len):
+        for y in range(y_len):
+            color = []
+            if is_counted[x][y] == PolygonStatus.not_counted.value:
+                current_polygon = get_polygon(image, x, y, is_counted)
+                for ind in range(3):
+                    color.append(image[x][y][ind])
+                edges = vectorization.start_vectorization(current_polygon)
+                polygon_path = svgwrite.shapes.Polyline(points=edges, fill=svgwrite.rgb(color[0], color[1], color[2]), stroke="#000", stroke_width=0.5)
+                polygon_path.translate(1)
+                svg_image.add(polygon_path)
+    svg_image.save()
 
-    image.save()
 
-
-original_image = io.imread('img_2.jpg')
+original_image = io.imread('img_1.jpg')
 
 max_dimension = 200
 original_dimensions = [original_image.shape[0], original_image.shape[1]]
@@ -294,11 +278,11 @@ contours = contouring(image_recounted)
 result = cv2.cvtColor(np.asarray(coloring(image_recounted, contours)), cv2.COLOR_RGBA2BGR)
 
 contoured_image = cv2.cvtColor(np.asarray(contours), cv2.COLOR_RGBA2BGR)
-vectorization(contours)
+image_to_svg(image_recounted)
 
-cv2.imshow("result", result)
-cv2.imshow("contours", contoured_image)
-cv2.imshow("clusters", clustered_image)
+# cv2.imshow("result", result)
+# cv2.imshow("contours", contoured_image)
+# cv2.imshow("clusters", clustered_image)
 # out = contouring(new_img)
 # cv2.imshow("clust", cv2.cvtColor(np.asarray(new_img), cv2.COLOR_RGBA2BGR))
 # cv2.imshow("clusters", cv2.cvtColor(np.asarray(out), cv2.COLOR_RGBA2BGR))
